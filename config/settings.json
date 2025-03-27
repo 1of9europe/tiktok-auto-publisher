@@ -1,0 +1,38 @@
+{
+    "video_settings": {
+        "max_duration": 120,
+        "resolution": {
+            "width": 1080,
+            "height": 1920
+        },
+        "fps": 30,
+        "bitrate": "5000k",
+        "max_file_size": 524288000
+    },
+    "paths": {
+        "downloads": "downloads",
+        "outputs": "outputs",
+        "temp": "temp"
+    },
+    "api": {
+        "openai": {
+            "model": "gpt-4",
+            "temperature": 0.7
+        },
+        "youtube": {
+            "max_results": 10,
+            "min_views": 1000
+        },
+        "tiktok": {
+            "max_hashtags": 5,
+            "max_description_length": 150
+        }
+    },
+    "quality_thresholds": {
+        "min_brightness": 0.2,
+        "max_brightness": 0.8,
+        "min_contrast": 0.4,
+        "min_audio_db": -30,
+        "max_audio_db": 0
+    }
+} 

@@ -1,0 +1,12 @@
+{
+  "status": "success",
+  "message": "Video published successfully",
+  "post_data": {
+    "title": "Test Video",
+    "hashtags": [
+      "#test"
+    ]
+  },
+  "timestamp": "2024-01-01T00:00:00",
+  "mock_video_url": "https://www.tiktok.com/@test"
+}
