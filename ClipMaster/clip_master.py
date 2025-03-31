@@ -15,6 +15,7 @@ class ClipMaster:
         self.outputs_dir = Path(self.config['paths']['outputs'])
         self.outputs_dir.mkdir(exist_ok=True)
         self.model = whisper.load_model("base")
+        openai.api_key = self.config['api']['openai']['api_key']
         
     def setup_logging(self):
         logging.basicConfig(

@@ -211,16 +211,11 @@ class QualityChecker:
         Sauvegarde les résultats de l'analyse
         """
         try:
-            output_dir = Path(video_path).parent / 'quality_reports'
-            output_dir.mkdir(exist_ok=True)
-            
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_file = output_dir / f'quality_report_{timestamp}.json'
-            
-            with open(output_file, 'w', encoding='utf-8') as f:
+            output_path = Path(video_path)
+            with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, ensure_ascii=False, indent=2)
                 
-            self.logger.info(f"Rapport de qualité sauvegardé dans {output_file}")
+            self.logger.info(f"Rapport de qualité sauvegardé dans {output_path}")
             
         except Exception as e:
             self.logger.error(f"Erreur lors de la sauvegarde des résultats: {str(e)}")

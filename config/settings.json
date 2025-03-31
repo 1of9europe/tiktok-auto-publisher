@@ -1,6 +1,8 @@
 {
     "video_settings": {
-        "max_duration": 120,
+        "max_duration": 60,
+        "min_quality": "720p",
+        "preferred_format": "mp4",
         "resolution": {
             "width": 1080,
             "height": 1920
@@ -11,7 +13,7 @@
     },
     "paths": {
         "downloads": "downloads",
-        "outputs": "outputs",
+        "output": "output",
         "temp": "temp"
     },
     "api": {
@@ -20,19 +22,36 @@
             "temperature": 0.7
         },
         "youtube": {
+            "api_key": "AIzaSyD7QHL2IFAmlCj8XyQCcd6ew58BmsRQOkk",
             "max_results": 10,
-            "min_views": 1000
+            "min_views": 1000,
+            "max_duration": 60
         },
         "tiktok": {
-            "max_hashtags": 5,
-            "max_description_length": 150
+            "max_hashtags": 10,
+            "max_description_length": 150,
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+        },
+        "reddit": {
+            "user_agent": "TrendHunter/1.0"
         }
     },
     "quality_thresholds": {
-        "min_brightness": 0.2,
+        "min_duration": 15,
+        "max_duration": 60,
+        "min_fps": 24,
+        "min_resolution": [720, 1280],
+        "min_brightness": 0.3,
         "max_brightness": 0.8,
         "min_contrast": 0.4,
-        "min_audio_db": -30,
+        "min_audio_db": -20,
         "max_audio_db": 0
+    },
+    "logging": {
+        "level": "INFO",
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        "file": "logs/app.log"
     }
 } 
