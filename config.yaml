@@ -1,0 +1,42 @@
+# Configuration des chemins
+paths:
+  outputs: outputs
+  downloads: downloads
+
+# Configuration OpenAI
+api:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-3.5-turbo
+    temperature: 0.7
+  youtube:
+    api_key: ${YOUTUBE_API_KEY}
+    max_results: 10
+    max_duration: 60
+    min_views: 1000
+
+# Configuration des sous-titres
+use_subtitles: true
+subtitle_style: auto  # auto, white, yellow, black
+
+# Configuration vidéo
+video_settings:
+  fps: 30
+  segment_duration: 60  # Durée de chaque segment en secondes
+  force_vertical: true  # Force le format 9:16
+  add_watermark: false  # Active l'ajout de watermark
+  watermark_path: "assets/watermark.png"  # Chemin du watermark
+  watermark_position: "bottom-right"  # Position du watermark
+  watermark_opacity: 0.7  # Opacité du watermark
+  
+  # Paramètres FFmpeg
+  ffmpeg_preset: "medium"  # veryfast, fast, medium, slow, veryslow
+  ffmpeg_crf: 23  # 0-51, plus bas = meilleure qualité
+  ffmpeg_bitrate: "2M"  # Bitrate vidéo
+  ffmpeg_audio_bitrate: "128k"  # Bitrate audio
+  max_file_size_mb: 287  # Limite TikTok
+  reencode_with_ffmpeg: true  # Active l'optimisation FFmpeg
+
+# Configuration des métadonnées
+metadata:
+  generation_mode: gpt  # ou 'basic' 

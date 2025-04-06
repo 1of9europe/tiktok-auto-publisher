@@ -8,9 +8,9 @@ import numpy as np
 import subprocess
 import shutil
 import re
+import openai
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ColorClip, ImageClip
 from moviepy.video.fx.all import resize
-import openai
 
 from .video_encoder import VideoEncoder
 
@@ -36,6 +36,13 @@ class VideoProcessor:
         self.downloads_dir = Path(config['paths']['downloads'])
         self.outputs_dir.mkdir(parents=True, exist_ok=True)
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Configuration des polices
+        self.font_config = {
+            'default': 'Arial',
+            'bold': 'Arial-Bold',
+            'fallback': 'Helvetica'
+        }
         
         # Options de configuration avec valeurs par défaut
         self.use_subtitles = config.get('use_subtitles', True)
@@ -75,7 +82,7 @@ class VideoProcessor:
         
         Args:
             video_path (str): Chemin de la vidéo à traiter
-            dry_run (bool): Si True, analyse sans export
+            dry_run (bool): Si True, ne fait que l'analyse sans exporter
             video_metadata (Optional[Dict]): Métadonnées de la vidéo YouTube
             
         Returns:
@@ -272,28 +279,34 @@ class VideoProcessor:
             self.logger.error(f"❌ Erreur lors de la génération des sous-titres: {str(e)}")
             return None
             
-    def _save_srt(self, segments: List[Dict], output_path: str) -> None:
+    def _save_srt(self, segments: List[Dict], output_path: str) -> bool:
         """
         Sauvegarde les segments en format SRT.
         
         Args:
             segments (List[Dict]): Segments de sous-titres
             output_path (str): Chemin de sortie
+            
+        Returns:
+            bool: True si la sauvegarde a réussi, False sinon
         """
         try:
             with open(output_path, 'w', encoding='utf-8') as f:
                 for i, segment in enumerate(segments, 1):
                     start = self._format_timestamp(segment['start'])
                     end = self._format_timestamp(segment['end'])
+                    text = segment['text'].strip()
                     
                     f.write(f"{i}\n")
                     f.write(f"{start} --> {end}\n")
-                    f.write(f"{segment['text']}\n\n")
+                    f.write(f"{text}\n\n")
                     
             self.logger.info(f"💬 Sous-titres sauvegardés: {output_path}")
+            return True
             
         except Exception as e:
             self.logger.error(f"❌ Erreur lors de la sauvegarde des sous-titres: {str(e)}")
+            return False
             
     def _format_timestamp(self, seconds: float) -> str:
         """
@@ -313,67 +326,38 @@ class VideoProcessor:
         
         return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
             
-    def _determine_style_auto(self, brightness: float) -> Tuple[str, str, Tuple[int, int, int]]:
-        """
-        Détermine les couleurs optimales pour les sous-titres en fonction de la luminosité du fond.
-        
-        Args:
-            brightness (float): Valeur de luminosité moyenne du fond (0-255)
-            
-        Returns:
-            Tuple[str, str, Tuple[int, int, int]]: (couleur texte, couleur contour, couleur fond)
-        """
-        if brightness < 100:  # Fond très sombre
-            return 'white', 'black', (0, 0, 0)
-        elif brightness > 180:  # Fond très clair
-            return 'black', 'white', (255, 255, 255)
-        else:  # Fond moyen
-            return '#ffd700', 'black', (0, 0, 0)
-
     def _add_subtitles(self, video: VideoFileClip, subtitles: Dict, style: str = "auto") -> CompositeVideoClip:
         """
-        Ajoute des sous-titres stylisés à une vidéo avec adaptation automatique au fond.
+        Ajoute des sous-titres stylisés à une vidéo avec un style fixe TikTok-friendly.
         
         Args:
             video (VideoFileClip): Clip vidéo
             subtitles (Dict): Données des sous-titres
-            style (str): Style des sous-titres (auto, white, yellow, black)
+            style (str): Style des sous-titres (ignoré, style fixe)
             
         Returns:
             CompositeVideoClip: Vidéo avec sous-titres
         """
         try:
             txt_clips = []
-            font = 'Arial-Bold'  # Police plus lisible
+            font = self.font_config['bold']  # Utilisation de Arial-Bold
             
-            # Taille de police adaptative (12% de la hauteur de la vidéo)
-            fontsize = int(video.h * 0.12)
-            
-            # Calcul des offsets pour le positionnement responsive
-            txt_y_offset = int(video.h * 0.08)  # 8% de la hauteur
-            bg_y_offset = int(video.h * 0.07)   # 7% de la hauteur
+            # Taille de police adaptative entre 24 et 48px
+            min_fontsize = 24
+            max_fontsize = 48
+            base_fontsize = int(video.h * 0.08)  # 8% de la hauteur
+            fontsize = max(min_fontsize, min(base_fontsize, max_fontsize))
             
             for segment in subtitles['segments']:
                 start = segment['start']
                 end = segment['end']
                 text = segment['text']
                 
-                # Sécurisation de get_frame avec une marge de sécurité
-                safe_start = min(start, video.duration - 0.1)
-                frame = video.get_frame(safe_start)
-                brightness = np.mean(frame)
-                
-                # Détermination des couleurs selon le style
-                if style == "auto":
-                    text_color, stroke_color, bg_color = self._determine_style_auto(brightness)
-                elif style == "yellow":
-                    text_color, stroke_color, bg_color = "#ffd700", 'black', (0, 0, 0)
-                elif style == "white":
-                    text_color, stroke_color, bg_color = 'white', 'black', (0, 0, 0)
-                elif style == "black":
-                    text_color, stroke_color, bg_color = 'black', 'white', (255, 255, 255)
-                else:
-                    text_color, stroke_color, bg_color = 'white', 'black', (0, 0, 0)
+                # Style fixe TikTok-friendly
+                text_color = '#ffc800'  # Jaune foncé
+                stroke_color = 'black'
+                stroke_width = 1.5  # Contour fin
+                bg_color = (0, 0, 0)  # Fond noir semi-transparent
                 
                 # Création du clip de texte avec style amélioré
                 txt_clip = TextClip(
@@ -382,26 +366,23 @@ class VideoProcessor:
                     fontsize=fontsize,
                     color=text_color,
                     stroke_color=stroke_color,
-                    stroke_width=4,  # Contour plus épais
+                    stroke_width=stroke_width,
                     method='caption',
                     size=(video.w * 0.9, None),  # Largeur max 90% de la vidéo
                     align='center'
                 )
                 
-                # Ajout d'une animation de fadein
-                txt_clip = txt_clip.fadein(0.3)
-                
                 # Création du fond semi-transparent
-                bg_width = txt_clip.w + 80  # Marge de 40px de chaque côté
-                bg_height = txt_clip.h + 60  # Marge de 30px en haut et en bas
+                bg_width = txt_clip.w + 40  # Marge de 20px de chaque côté
+                bg_height = txt_clip.h + 20  # Marge de 10px en haut et en bas
                 bg_clip = ColorClip(
                     size=(bg_width, bg_height),
                     color=bg_color
-                ).set_opacity(0.85)  # 85% d'opacité pour un meilleur contraste
+                ).set_opacity(0.3)  # 30% d'opacité
                 
-                # Positionnement responsive
-                txt_pos = ('center', video.h - txt_clip.h - txt_y_offset)
-                bg_pos = ('center', video.h - bg_clip.h - bg_y_offset)
+                # Positionnement en bas de l'écran avec marge
+                txt_pos = ('center', video.h - txt_clip.h - 30)  # 30px du bas
+                bg_pos = ('center', video.h - bg_clip.h - 25)  # 25px du bas
                 
                 # Application du timing
                 txt_clip = txt_clip.set_position(txt_pos).set_start(start).set_end(end)
@@ -588,62 +569,38 @@ class VideoProcessor:
                 
             # Mode GPT : génération avec OpenAI
             prompt = f"""
-            Tu es un expert en contenu viral sur TikTok. Génère un titre, une description et des hashtags optimisés à partir des données suivantes.
-
-            📄 MÉTADONNÉES ORIGINALES :
-            - Titre : {video_metadata.get('title', 'Non disponible')}
+            Basé sur cette vidéo YouTube et sa transcription, génère un contenu viral pour TikTok :
+            
+            Métadonnées YouTube :
+            - Titre original : {video_metadata.get('title', 'Non disponible')}
             - Description : {video_metadata.get('description', 'Non disponible')}
             - Chaîne : {video_metadata.get('channel_title', 'Non disponible')}
             - Vues : {video_metadata.get('views', 0):,}
             - Date de publication : {video_metadata.get('published_at', 'Non disponible')}
-
-            🎙️ TRANSCRIPTION (extrait brut, maximum 1000 caractères) :
-            {transcript[:1000]}
-
-            🎯 OBJECTIFS :
-            - Attirer l'attention dans les 2 premières secondes
-            - Éveiller la curiosité sans mentir
-            - Maximiser les interactions (likes, commentaires, partages)
-
-            ✍️ DIRECTIVES :
-
-            1. **TITRE (≤100 caractères)** :
-               - Format : "[Emoji] Hook | Détail"
-               - Crée une émotion forte (choc, curiosité, admiration)
-               - Utilise des mots puissants : OMG, Incroyable, Choc, Inédit
-               - ⚠️ Évite : "Tu ne devineras jamais", "La vérité sur"
-
-            2. **DESCRIPTION (≤150 caractères)** :
-               - Format : "[Question] 💭 [Point clé] 👇 [Call-to-action]"
-               - Différente du titre
-               - Incite aux commentaires
-               - Max. 3 emojis
-
-            3. **HASHTAGS (5 à 7)** :
-               - 2-3 tendances TikTok FR ou globales
-               - 2-3 hashtags liés au sujet
-               - 1-2 hashtags de niche
-               - Mélange français + anglais
-
-            📦 FORMAT DE RÉPONSE STRICT (JSON) :
+            
+            Transcription :
+            {transcript[:1000]}...
+            
+            Format de réponse strict (JSON) :
             {{
-              "title": "Titre TikTok",
-              "description": "Description TikTok",
-              "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5"]
+                "title": "Titre accrocheur et unique (max 100 caractères)",
+                "description": "Description engageante et différente du titre (max 150 caractères)",
+                "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5"]
             }}
-
-            ⚠️ RÈGLES FINALES :
-            - Pas de clickbait
-            - Titre ≠ description
-            - Ton : authentique, humain, engageant
-            - Adapté au format court TikTok
+            
+            IMPORTANT :
+            - Le titre et la description DOIVENT être différents
+            - Utilise des emojis pertinents
+            - Les hashtags doivent être populaires sur TikTok
+            - Adapte le contenu pour le format court TikTok
+            - Garde l'essence de la vidéo originale
             """
             
             client = openai.OpenAI(api_key=self.config['api']['openai']['api_key'])
             response = client.chat.completions.create(
                 model=self.config['api']['openai']['model'],
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7  # Réduction de la créativité pour plus de cohérence
+                temperature=self.config['api']['openai']['temperature']
             )
             
             # Lecture sécurisée du JSON GPT
@@ -656,7 +613,7 @@ class VideoProcessor:
                     raise ValueError("Titre ou description manquant")
                     
                 if metadata.get("title", "") == metadata.get("description", ""):
-                    metadata["description"] = f"🤔 Que pensez-vous de cette vidéo ? 💭 Partagez votre avis en commentaire ! 👇"
+                    metadata["description"] = f"Regardez cette vidéo : {metadata['title']} ✨"
                     
                 if not metadata.get("hashtags") or len(metadata["hashtags"]) < 3:
                     metadata["hashtags"] = ['#tiktok', '#viral', '#trending', '#fyp', '#foryou']
@@ -797,4 +754,218 @@ class VideoProcessor:
         self.logger.info(f"📝 Titre: {metadata.get('title', '')}")
         self.logger.info(f"📝 Description: {metadata.get('description', '')}")
         self.logger.info(f"🏷️ Hashtags: {' '.join(metadata.get('hashtags', []))}")
-        return False 
+        return False
+
+    def _cleanup_temp_files(self, file_paths: List[str]) -> None:
+        """
+        Nettoie les fichiers temporaires.
+        
+        Args:
+            file_paths (List[str]): Liste des chemins des fichiers à supprimer
+        """
+        for file_path in file_paths:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    self.logger.debug(f"🧹 Fichier temporaire supprimé: {file_path}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Échec de la suppression de {file_path}: {str(e)}")
+
+    def _add_subtitles_ffmpeg(self, video_path: str, srt_path: str, output_path: str) -> bool:
+        """
+        Ajoute des sous-titres à une vidéo avec FFmpeg en utilisant un style fixe TikTok-friendly.
+        
+        Args:
+            video_path (str): Chemin de la vidéo d'entrée
+            srt_path (str): Chemin du fichier SRT
+            output_path (str): Chemin de la vidéo de sortie
+            
+        Returns:
+            bool: True si l'ajout des sous-titres a réussi, False sinon
+        """
+        try:
+            # Vérification des fichiers
+            if not os.path.exists(video_path):
+                self.logger.error(f"❌ Vidéo introuvable: {video_path}")
+                return False
+            if not os.path.exists(srt_path):
+                self.logger.error(f"❌ Fichier SRT introuvable: {srt_path}")
+                return False
+                
+            # Récupération des dimensions de la vidéo
+            probe_cmd = [
+                'ffprobe',
+                '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height',
+                '-of', 'json',
+                video_path
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                self.logger.error("❌ Erreur lors de l'analyse de la vidéo")
+                return False
+                
+            # Calcul de la taille de police adaptative
+            video_info = json.loads(result.stdout)
+            width = video_info['streams'][0]['width']
+            height = video_info['streams'][0]['height']
+            min_dim = min(width, height)
+            font_size = max(24, min(48, int(min_dim * 0.05)))  # Entre 24 et 48px
+            
+            # Style ASS pour libass
+            ass_style = f"""
+[Script Info]
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial-Bold,{font_size},&H00FFC800,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,1.5,0,2,20,20,30,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+            
+            # Sauvegarde du style ASS
+            ass_path = srt_path.replace('.srt', '.ass')
+            with open(ass_path, 'w', encoding='utf-8') as f:
+                f.write(ass_style)
+                
+            # Conversion SRT vers ASS
+            with open(srt_path, 'r', encoding='utf-8') as srt_file:
+                srt_content = srt_file.read()
+                # Conversion des timestamps et ajout des lignes
+                for line in srt_content.split('\n\n'):
+                    if line.strip():
+                        parts = line.split('\n')
+                        if len(parts) >= 3:
+                            timing = parts[1]
+                            text = parts[2]
+                            ass_line = f"Dialogue: 0,{timing},Default,,0,0,0,,{text}\n"
+                            with open(ass_path, 'a', encoding='utf-8') as f:
+                                f.write(ass_line)
+                                
+            # Commande FFmpeg avec libass
+            cmd = [
+                'ffmpeg',
+                '-y',
+                '-i', video_path,
+                '-vf', f"ass={ass_path}",
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-c:a', 'copy',
+                output_path
+            ]
+            
+            # Exécution de la commande
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            # Nettoyage des fichiers temporaires
+            self._cleanup_temp_files([ass_path])
+            
+            if result.returncode != 0:
+                self.logger.error(f"❌ Erreur lors de l'ajout des sous-titres avec libass: {result.stderr}")
+                
+                # Fallback avec drawtext
+                self.logger.info("🔄 Tentative avec drawtext...")
+                
+                # Conversion des timestamps SRT en format drawtext
+                drawtext_filter = self._convert_srt_to_drawtext(srt_path, width, height, font_size)
+                
+                # Commande FFmpeg avec drawtext
+                cmd = [
+                    'ffmpeg',
+                    '-y',
+                    '-i', video_path,
+                    '-vf', drawtext_filter,
+                    '-c:v', 'libx264',
+                    '-preset', 'medium',
+                    '-crf', '23',
+                    '-c:a', 'copy',
+                    output_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    self.logger.error(f"❌ Erreur lors de l'ajout des sous-titres avec drawtext: {result.stderr}")
+                    return False
+                    
+            self.logger.info("✅ Sous-titres ajoutés avec succès")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors de l'ajout des sous-titres: {str(e)}")
+            return False
+            
+    def _convert_srt_to_drawtext(self, srt_path: str, width: int, height: int, font_size: int) -> str:
+        """
+        Convertit un fichier SRT en filtre drawtext FFmpeg.
+        
+        Args:
+            srt_path (str): Chemin du fichier SRT
+            width (int): Largeur de la vidéo
+            height (int): Hauteur de la vidéo
+            font_size (int): Taille de la police
+            
+        Returns:
+            str: Filtre drawtext FFmpeg
+        """
+        try:
+            drawtext_parts = []
+            
+            with open(srt_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                segments = content.split('\n\n')
+                
+                for segment in segments:
+                    if not segment.strip():
+                        continue
+                        
+                    lines = segment.split('\n')
+                    if len(lines) >= 3:
+                        timing = lines[1]
+                        text = lines[2].strip()
+                        
+                        # Conversion du timing
+                        start_time, end_time = timing.split(' --> ')
+                        start_seconds = self._srt_time_to_seconds(start_time)
+                        end_seconds = self._srt_time_to_seconds(end_time)
+                        
+                        # Création du filtre drawtext
+                        drawtext = (
+                            f"drawtext=text='{text}':"
+                            f"fontfile=/System/Library/Fonts/Arial.ttf:"  # Chemin de la police
+                            f"fontsize={font_size}:"
+                            f"fontcolor=#ffc800:"  # Jaune foncé
+                            f"bordercolor=black:"
+                            f"borderw=1.5:"
+                            f"x=(w-text_w)/2:"  # Centrage horizontal
+                            f"y=h-th-30:"  # 30px du bas
+                            f"enable='between(t,{start_seconds},{end_seconds})'"
+                        )
+                        drawtext_parts.append(drawtext)
+                        
+            # Combinaison des filtres
+            return ','.join(drawtext_parts)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors de la conversion SRT vers drawtext: {str(e)}")
+            return ""
+            
+    def _srt_time_to_seconds(self, srt_time: str) -> float:
+        """
+        Convertit un timestamp SRT en secondes.
+        
+        Args:
+            srt_time (str): Timestamp au format SRT (HH:MM:SS,mmm)
+            
+        Returns:
+            float: Nombre de secondes
+        """
+        hours, minutes, seconds = srt_time.replace(',', '.').split(':')
+        return float(hours) * 3600 + float(minutes) * 60 + float(seconds) 
